@@ -33,105 +33,42 @@ struct next_schedule : public invalid_is_maximal<PACKET, min_event_cycle<PACKET>
 void MEMORY_CONTROLLER::operate()
 {
   for (auto& channel : channels) {
-    // Finish request
-    if (channel.active_request != std::end(channel.bank_request) && channel.active_request->event_cycle <= current_cycle) {
-      for (auto ret : channel.active_request->pkt->to_return)
-        ret->return_data(&(*channel.active_request->pkt));
-
-      channel.active_request->valid = false;
-
-      *channel.active_request->pkt = {};
-      channel.active_request = std::end(channel.bank_request);
-    }
-
-    // Check queue occupancy
-    std::size_t wq_occu = std::count_if(std::begin(channel.WQ), std::end(channel.WQ), is_valid<PACKET>());
-    std::size_t rq_occu = std::count_if(std::begin(channel.RQ), std::end(channel.RQ), is_valid<PACKET>());
-
-    // Change modes if the queues are unbalanced
-    if ((!channel.write_mode && (wq_occu >= DRAM_WRITE_HIGH_WM || (rq_occu == 0 && wq_occu > 0)))
-        || (channel.write_mode && (wq_occu == 0 || (rq_occu > 0 && wq_occu < DRAM_WRITE_LOW_WM)))) {
-      // Reset scheduled requests
-      for (auto it = std::begin(channel.bank_request); it != std::end(channel.bank_request); ++it) {
-        // Leave active request on the data bus
-        if (it != channel.active_request && it->valid) {
-          // Leave rows charged
-          if (it->event_cycle < (current_cycle + tCAS))
-            it->open_row = UINT32_MAX;
-
-          // This bank is ready for another DRAM request
-          it->valid = false;
-          it->pkt->scheduled = false;
-          it->pkt->event_cycle = current_cycle;
+    while(1){
+      auto minIter = channel.RQ.end();
+      for (auto iter=channel.RQ.begin();iter!=channel.RQ.end();iter++){
+        if(iter->valid && (iter->event_cycle <=current_cycle)){
+          minIter=iter;
+          break;
         }
       }
-
-      // Add data bus turn-around time
-      if (channel.active_request != std::end(channel.bank_request))
-        channel.dbus_cycle_available = channel.active_request->event_cycle + DRAM_DBUS_TURN_AROUND_TIME; // After ongoing finish
-      else
-        channel.dbus_cycle_available = current_cycle + DRAM_DBUS_TURN_AROUND_TIME;
-
-      // Invert the mode
-      channel.write_mode = !channel.write_mode;
-    }
-
-    // Look for requests to put on the bus
-    auto iter_next_process = std::min_element(std::begin(channel.bank_request), std::end(channel.bank_request), min_event_cycle<BANK_REQUEST>());
-    if (iter_next_process->valid && iter_next_process->event_cycle <= current_cycle) {
-      if (channel.active_request == std::end(channel.bank_request) && channel.dbus_cycle_available <= current_cycle) {
-        // Bus is available
-        // Put this request on the data bus
-        channel.active_request = iter_next_process;
-        channel.active_request->event_cycle = current_cycle + DRAM_DBUS_RETURN_TIME;
-
-        if (iter_next_process->row_buffer_hit)
-          if (channel.write_mode)
-            channel.WQ_ROW_BUFFER_HIT++;
-          else
-            channel.RQ_ROW_BUFFER_HIT++;
-        else if (channel.write_mode)
-          channel.WQ_ROW_BUFFER_MISS++;
-        else
-          channel.RQ_ROW_BUFFER_MISS++;
-      } else {
-        // Bus is congested
-        if (channel.active_request != std::end(channel.bank_request))
-          channel.dbus_cycle_congested += (channel.active_request->event_cycle - current_cycle);
-        else
-          channel.dbus_cycle_congested += (channel.dbus_cycle_available - current_cycle);
-        channel.dbus_count_congested++;
+      if(minIter==channel.RQ.end()) break;
+      for(auto ret : minIter->pkt.to_return){
+        ret->return_data(&(minIter->pkt));
       }
+      *minIter={};
     }
-
-    // Look for queued packets that have not been scheduled
-    std::vector<PACKET>::iterator iter_next_schedule;
-    if (channel.write_mode)
-      iter_next_schedule = std::min_element(std::begin(channel.WQ), std::end(channel.WQ), next_schedule());
-    else
-      iter_next_schedule = std::min_element(std::begin(channel.RQ), std::end(channel.RQ), next_schedule());
-
-    if (is_valid<PACKET>()(*iter_next_schedule) && iter_next_schedule->event_cycle <= current_cycle) {
-      uint32_t op_rank = dram_get_rank(iter_next_schedule->address), op_bank = dram_get_bank(iter_next_schedule->address),
-               op_row = dram_get_row(iter_next_schedule->address);
-
-      auto op_idx = op_rank * DRAM_BANKS + op_bank;
-
-      if (!channel.bank_request[op_idx].valid) {
-        bool row_buffer_hit = (channel.bank_request[op_idx].open_row == op_row);
-
-        // this bank is now busy
-        channel.bank_request[op_idx] = {true, row_buffer_hit, op_row, current_cycle + tCAS + (row_buffer_hit ? 0 : tRP + tRCD), iter_next_schedule};
-
-        iter_next_schedule->scheduled = true;
-        iter_next_schedule->event_cycle = std::numeric_limits<uint64_t>::max();
+    //repeat for WQ?
+    while(1){
+      auto minIter = channel.WQ.end();
+      for (auto iter=channel.WQ.begin();iter!=channel.WQ.end();iter++){
+        if(iter->valid && (iter->event_cycle <=current_cycle)){
+          minIter=iter;
+          break;
+        }
       }
+      if(minIter==channel.WQ.end()) break;
+      for(auto ret : minIter->pkt.to_return){
+        ret->return_data(&(minIter->pkt));
+      }
+      *minIter={};
     }
   }
+
 }
 
 int MEMORY_CONTROLLER::add_rq(PACKET* packet)
 {
+  std::cout<<"code gets here?"<<std::endl;
   if (all_warmup_complete < NUM_CPUS) {
     for (auto ret : packet->to_return)
       ret->return_data(packet);
@@ -139,12 +76,14 @@ int MEMORY_CONTROLLER::add_rq(PACKET* packet)
     return -1; // Fast-forward
   }
 
-  auto& channel = channels[dram_get_channel(packet->address)];
+  
+  //keeping channels. Could use separate channels to distinguish local/1hop/2hop/CI
+  auto& channel = channels[dram_get_channel(packet->address)]; 
 
   // Check for forwarding
-  auto wq_it = std::find_if(std::begin(channel.WQ), std::end(channel.WQ), eq_addr<PACKET>(packet->address, LOG2_BLOCK_SIZE));
+  auto wq_it = std::find_if(std::begin(channel.WQ), std::end(channel.WQ), eq_addr<M_REQUEST>(packet->address, LOG2_BLOCK_SIZE));
   if (wq_it != std::end(channel.WQ)) {
-    packet->data = wq_it->data;
+    packet->data = wq_it->pkt.data;
     for (auto ret : packet->to_return)
       ret->return_data(packet);
 
@@ -152,59 +91,58 @@ int MEMORY_CONTROLLER::add_rq(PACKET* packet)
   }
 
   // Check for duplicates
-  auto rq_it = std::find_if(std::begin(channel.RQ), std::end(channel.RQ), eq_addr<PACKET>(packet->address, LOG2_BLOCK_SIZE));
+  auto rq_it = std::find_if(std::begin(channel.RQ), std::end(channel.RQ), eq_addr<M_REQUEST>(packet->address, LOG2_BLOCK_SIZE));
   if (rq_it != std::end(channel.RQ)) {
-    packet_dep_merge(rq_it->lq_index_depend_on_me, packet->lq_index_depend_on_me);
-    packet_dep_merge(rq_it->sq_index_depend_on_me, packet->sq_index_depend_on_me);
-    packet_dep_merge(rq_it->instr_depend_on_me, packet->instr_depend_on_me);
-    packet_dep_merge(rq_it->to_return, packet->to_return);
+    packet_dep_merge(rq_it->pkt.lq_index_depend_on_me, packet->lq_index_depend_on_me);
+    packet_dep_merge(rq_it->pkt.sq_index_depend_on_me, packet->sq_index_depend_on_me);
+    packet_dep_merge(rq_it->pkt.instr_depend_on_me, packet->instr_depend_on_me);
+    packet_dep_merge(rq_it->pkt.to_return, packet->to_return);
 
     return std::distance(std::begin(channel.RQ), rq_it); // merged index
   }
 
   // Find empty slot
-  rq_it = std::find_if_not(std::begin(channel.RQ), std::end(channel.RQ), is_valid<PACKET>());
+  rq_it = std::find_if_not(std::begin(channel.RQ), std::end(channel.RQ), is_valid<M_REQUEST>());
   if (rq_it == std::end(channel.RQ)) {
     return 0;
   }
-
-  *rq_it = *packet;
-  rq_it->event_cycle = current_cycle;
-
+  PACKET tpkt=*packet;
+  M_REQUEST mrq = {true, (current_cycle+channel.ch_latency),packet->address, tpkt};
+  *rq_it = mrq;
+  //rq_it->event_cycle = current_cycle;
+  std::cout<<"RQ entry added"<<std::endl;
   return get_occupancy(1, packet->address);
 }
 
 int MEMORY_CONTROLLER::add_wq(PACKET* packet)
 {
+  //return add_rq(packet);
+  
   if (all_warmup_complete < NUM_CPUS)
     return -1; // Fast-forward
 
   auto& channel = channels[dram_get_channel(packet->address)];
 
   // Check for duplicates
-  auto wq_it = std::find_if(std::begin(channel.WQ), std::end(channel.WQ), eq_addr<PACKET>(packet->address, LOG2_BLOCK_SIZE));
+  auto wq_it = std::find_if(std::begin(channel.WQ), std::end(channel.WQ), eq_addr<M_REQUEST>(packet->address, LOG2_BLOCK_SIZE));
   if (wq_it != std::end(channel.WQ))
     return 0;
 
   // search for the empty index
-  wq_it = std::find_if_not(std::begin(channel.WQ), std::end(channel.WQ), is_valid<PACKET>());
+  wq_it = std::find_if_not(std::begin(channel.WQ), std::end(channel.WQ), is_valid<M_REQUEST>());
   if (wq_it == std::end(channel.WQ)) {
-    channel.WQ_FULL++;
     return -2;
   }
-
-  *wq_it = *packet;
-  wq_it->event_cycle = current_cycle;
+  PACKET tpkt=*packet;
+  M_REQUEST mrq = {true, (current_cycle+channel.ch_latency),packet->address, tpkt};
+  *wq_it = mrq;
+  //wq_it->event_cycle = current_cycle;
 
   return get_occupancy(2, packet->address);
 }
 
 int MEMORY_CONTROLLER::add_pq(PACKET* packet) { return add_rq(packet); }
 
-/*
- * | row address | rank index | column address | bank index | channel | block
- * offset |
- */
 
 uint32_t MEMORY_CONTROLLER::dram_get_channel(uint64_t address)
 {
@@ -212,37 +150,16 @@ uint32_t MEMORY_CONTROLLER::dram_get_channel(uint64_t address)
   return (address >> shift) & bitmask(lg2(DRAM_CHANNELS));
 }
 
-uint32_t MEMORY_CONTROLLER::dram_get_bank(uint64_t address)
-{
-  int shift = lg2(DRAM_CHANNELS) + LOG2_BLOCK_SIZE;
-  return (address >> shift) & bitmask(lg2(DRAM_BANKS));
-}
-
-uint32_t MEMORY_CONTROLLER::dram_get_column(uint64_t address)
-{
-  int shift = lg2(DRAM_BANKS) + lg2(DRAM_CHANNELS) + LOG2_BLOCK_SIZE;
-  return (address >> shift) & bitmask(lg2(DRAM_COLUMNS));
-}
-
-uint32_t MEMORY_CONTROLLER::dram_get_rank(uint64_t address)
-{
-  int shift = lg2(DRAM_BANKS) + lg2(DRAM_COLUMNS) + lg2(DRAM_CHANNELS) + LOG2_BLOCK_SIZE;
-  return (address >> shift) & bitmask(lg2(DRAM_RANKS));
-}
-
-uint32_t MEMORY_CONTROLLER::dram_get_row(uint64_t address)
-{
-  int shift = lg2(DRAM_RANKS) + lg2(DRAM_BANKS) + lg2(DRAM_COLUMNS) + lg2(DRAM_CHANNELS) + LOG2_BLOCK_SIZE;
-  return (address >> shift) & bitmask(lg2(DRAM_ROWS));
-}
-
 uint32_t MEMORY_CONTROLLER::get_occupancy(uint8_t queue_type, uint64_t address)
 {
   uint32_t channel = dram_get_channel(address);
-  if (queue_type == 1)
-    return std::count_if(std::begin(channels[channel].RQ), std::end(channels[channel].RQ), is_valid<PACKET>());
+  std::cout<<"channel: "<<channel<<std::endl;
+  if (queue_type == 1){
+    std::cout<<"get occupancy: "<<std::count_if(std::begin(channels[channel].RQ), std::end(channels[channel].RQ), is_valid<M_REQUEST>())<<std::endl;
+    return std::count_if(std::begin(channels[channel].RQ), std::end(channels[channel].RQ), is_valid<M_REQUEST>());
+  }
   else if (queue_type == 2)
-    return std::count_if(std::begin(channels[channel].WQ), std::end(channels[channel].WQ), is_valid<PACKET>());
+    return std::count_if(std::begin(channels[channel].WQ), std::end(channels[channel].WQ), is_valid<M_REQUEST>());
   else if (queue_type == 3)
     return get_occupancy(1, address);
 
@@ -252,8 +169,10 @@ uint32_t MEMORY_CONTROLLER::get_occupancy(uint8_t queue_type, uint64_t address)
 uint32_t MEMORY_CONTROLLER::get_size(uint8_t queue_type, uint64_t address)
 {
   uint32_t channel = dram_get_channel(address);
-  if (queue_type == 1)
+  if (queue_type == 1){
+    std::cout<<"RQsize at get_size: "<<channels[channel].RQ.size()<<std::endl;    
     return channels[channel].RQ.size();
+  }
   else if (queue_type == 2)
     return channels[channel].WQ.size();
   else if (queue_type == 3)

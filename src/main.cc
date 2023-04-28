@@ -110,10 +110,20 @@ void print_roi_stats(uint32_t cpu, CACHE* cache)
     cout << "  USEFUL: " << setw(10) << cache->pf_useful << "  USELESS: " << setw(10) << cache->pf_useless << endl;
 
     cout << cache->NAME;
-    cout << " AVERAGE MISS LATENCY: " << (1.0 * (cache->total_miss_latency)) / TOTAL_MISS << " cycles" << endl;
+    cout << " AVERAGE MISS LATENCY: " << (1.0 * (cache->total_miss_latency[cpu])) / TOTAL_MISS << " cycles" << endl;
     // cout << " AVERAGE MISS LATENCY: " <<
     // (cache->total_miss_latency)/TOTAL_MISS << " cycles " <<
     // cache->total_miss_latency << "/" << TOTAL_MISS<< endl;
+
+	//LLC miss lat HISTOGRAM
+	if (cache->NAME == "LLC") {
+		cout << "LLC_MISS_LAT_HIST (in ns):"<< endl;
+		for(uint32_t i =0;i<200;i++){
+        	cout<<i*10<<" : "<<cache->lat_hist[cpu][i]<<endl;
+    	}
+
+	}
+
   }
 }
 
@@ -198,46 +208,10 @@ void print_branch_stats()
 
 void print_dram_stats()
 {
-  uint64_t total_congested_cycle = 0;
-  uint64_t total_congested_count = 0;
 
   std::cout << std::endl;
   std::cout << "DRAM Statistics" << std::endl;
-  for (uint32_t i = 0; i < DRAM_CHANNELS; i++) {
-    std::cout << " CHANNEL " << i << std::endl;
 
-    auto& channel = DRAM.channels[i];
-    std::cout << " RQ ROW_BUFFER_HIT: " << std::setw(10) << channel.RQ_ROW_BUFFER_HIT << " ";
-    std::cout << " ROW_BUFFER_MISS: " << std::setw(10) << channel.RQ_ROW_BUFFER_MISS;
-    std::cout << std::endl;
-
-    std::cout << " DBUS AVG_CONGESTED_CYCLE: ";
-    if (channel.dbus_count_congested)
-      std::cout << std::setw(10) << ((double)channel.dbus_cycle_congested / channel.dbus_count_congested);
-    else
-      std::cout << "-";
-    std::cout << std::endl;
-
-    std::cout << " WQ ROW_BUFFER_HIT: " << std::setw(10) << channel.WQ_ROW_BUFFER_HIT << " ";
-    std::cout << " ROW_BUFFER_MISS: " << std::setw(10) << channel.WQ_ROW_BUFFER_MISS << " ";
-    std::cout << " FULL: " << std::setw(10) << channel.WQ_FULL;
-    std::cout << std::endl;
-
-    std::cout << std::endl;
-
-    total_congested_cycle += channel.dbus_cycle_congested;
-    total_congested_count += channel.dbus_count_congested;
-  }
-
-  if (DRAM_CHANNELS > 1) {
-    std::cout << " DBUS AVG_CONGESTED_CYCLE: ";
-    if (total_congested_count)
-      std::cout << std::setw(10) << ((double)total_congested_cycle / total_congested_count);
-    else
-      std::cout << "-";
-
-    std::cout << std::endl;
-  }
 }
 
 void reset_cache_stats(uint32_t cpu, CACHE* cache)
@@ -254,7 +228,9 @@ void reset_cache_stats(uint32_t cpu, CACHE* cache)
   cache->pf_useless = 0;
   cache->pf_fill = 0;
 
-  cache->total_miss_latency = 0;
+  for(uint32_t i=0; i< NUM_CPUS;i++){
+  	cache->total_miss_latency[i] = 0;
+  }
 
   cache->RQ_ACCESS = 0;
   cache->RQ_MERGED = 0;
@@ -306,10 +282,6 @@ void finish_warmup()
 
   // reset DRAM stats
   for (uint32_t i = 0; i < DRAM_CHANNELS; i++) {
-    DRAM.channels[i].WQ_ROW_BUFFER_HIT = 0;
-    DRAM.channels[i].WQ_ROW_BUFFER_MISS = 0;
-    DRAM.channels[i].RQ_ROW_BUFFER_HIT = 0;
-    DRAM.channels[i].RQ_ROW_BUFFER_MISS = 0;
   }
 }
 

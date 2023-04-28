@@ -353,8 +353,21 @@ bool CACHE::filllike_miss(std::size_t set, std::size_t way, PACKET& handle_pkt)
     fill_block.instr_id = handle_pkt.instr_id;
   }
 
-  if (warmup_complete[handle_pkt.cpu] && (handle_pkt.cycle_enqueued != 0))
-    total_miss_latency += current_cycle - handle_pkt.cycle_enqueued;
+  uint64_t miss_lat = current_cycle - handle_pkt.cycle_enqueued;
+  if (warmup_complete[handle_pkt.cpu] && (handle_pkt.cycle_enqueued != 0)){
+    total_miss_latency[handle_pkt.cpu] += current_cycle - handle_pkt.cycle_enqueued;
+	if(this->fill_level == 6){
+      int hist_index = miss_lat / 24; // divide by 2.4 to convert to ns, then by 10 for histogram(10ns per bucket)
+	  if(hist_index>199) hist_index=199;
+      lat_hist[handle_pkt.cpu][hist_index]++;
+    }
+	// if(this->fill_level == 6){
+	// //std::cout<<this->fill_level<<std::endl;
+	// std::cout<<"cycle_enqueued: "<<handle_pkt.cycle_enqueued<<std::endl;
+	// std::cout<<"miss_lat  	  : "<<current_cycle - handle_pkt.cycle_enqueued<<std::endl;
+	// }
+  }
+  
 
   // update prefetcher
   cpu = handle_pkt.cpu;
