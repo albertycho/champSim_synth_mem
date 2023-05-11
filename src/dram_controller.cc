@@ -68,7 +68,7 @@ void MEMORY_CONTROLLER::operate()
 
 int MEMORY_CONTROLLER::add_rq(PACKET* packet)
 {
-  std::cout<<"code gets here?"<<std::endl;
+  //std::cout<<"code gets here?"<<std::endl;
   if (all_warmup_complete < NUM_CPUS) {
     for (auto ret : packet->to_return)
       ret->return_data(packet);
@@ -110,7 +110,7 @@ int MEMORY_CONTROLLER::add_rq(PACKET* packet)
   M_REQUEST mrq = {true, (current_cycle+channel.ch_latency),packet->address, tpkt};
   *rq_it = mrq;
   //rq_it->event_cycle = current_cycle;
-  std::cout<<"RQ entry added"<<std::endl;
+  //std::cout<<"RQ entry added"<<std::endl;
   return get_occupancy(1, packet->address);
 }
 
@@ -146,16 +146,29 @@ int MEMORY_CONTROLLER::add_pq(PACKET* packet) { return add_rq(packet); }
 
 uint32_t MEMORY_CONTROLLER::dram_get_channel(uint64_t address)
 {
-  int shift = LOG2_BLOCK_SIZE;
-  return (address >> shift) & bitmask(lg2(DRAM_CHANNELS));
+  // int rint=rand() % 295;
+  // int chan=0;
+  // if(rint<46) chan=0;
+  // else if(rint<95) chan=1;
+  // else chan=2;
+
+  int rint=rand() % 295;
+  int chan=0;
+  if(rint<33) chan=0;
+  else if(rint<43) chan=1;
+  else if(rint<88) chan=2;
+  else chan=3;
+  return chan;
+  //int shift = LOG2_BLOCK_SIZE;
+  //return (address >> shift) & bitmask(lg2(DRAM_CHANNELS));
 }
 
 uint32_t MEMORY_CONTROLLER::get_occupancy(uint8_t queue_type, uint64_t address)
 {
   uint32_t channel = dram_get_channel(address);
-  std::cout<<"channel: "<<channel<<std::endl;
+  //std::cout<<"channel: "<<channel<<std::endl;
   if (queue_type == 1){
-    std::cout<<"get occupancy: "<<std::count_if(std::begin(channels[channel].RQ), std::end(channels[channel].RQ), is_valid<M_REQUEST>())<<std::endl;
+    //std::cout<<"get occupancy: "<<std::count_if(std::begin(channels[channel].RQ), std::end(channels[channel].RQ), is_valid<M_REQUEST>())<<std::endl;
     return std::count_if(std::begin(channels[channel].RQ), std::end(channels[channel].RQ), is_valid<M_REQUEST>());
   }
   else if (queue_type == 2)
@@ -170,7 +183,7 @@ uint32_t MEMORY_CONTROLLER::get_size(uint8_t queue_type, uint64_t address)
 {
   uint32_t channel = dram_get_channel(address);
   if (queue_type == 1){
-    std::cout<<"RQsize at get_size: "<<channels[channel].RQ.size()<<std::endl;    
+    //std::cout<<"RQsize at get_size: "<<channels[channel].RQ.size()<<std::endl;    
     return channels[channel].RQ.size();
   }
   else if (queue_type == 2)

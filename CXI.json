@@ -1,5 +1,5 @@
 {
-    "executable_name": "bin/1C_base_DDR",
+    "executable_name": "bin/CXI",
     "block_size": 64,
     "page_size": 4096,
     "heartbeat_frequency": 10000000,
@@ -141,7 +141,7 @@
 
     "LLC": {
         "frequency": 2400,
-        "sets": 65536,
+        "sets": 8192,
         "ways": 16,
         "rq_size": 1024,
         "wq_size": 1024,
@@ -158,8 +158,8 @@
     },
 
     "physical_memory": {
-        "frequency": 2400,
-        "channels": 2,
+        "frequency": 1000,
+        "channels": 4,
         "ranks": 2,
         "banks": 16,
         "rows": 131072,

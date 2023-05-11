@@ -341,13 +341,18 @@ int main(int argc, char** argv)
   cout << "Simulation Instructions: " << simulation_instructions << endl;
   cout << "Number of CPUs: " << NUM_CPUS << endl;
 
-  long long int dram_size = DRAM_CHANNELS * DRAM_RANKS * DRAM_BANKS * DRAM_ROWS * DRAM_COLUMNS * BLOCK_SIZE / 1024 / 1024; // in MiB
-  std::cout << "Off-chip DRAM Size: ";
-  if (dram_size > 1024)
-    std::cout << dram_size / 1024 << " GiB";
-  else
-    std::cout << dram_size << " MiB";
-  std::cout << " Channels: " << DRAM_CHANNELS << " Width: " << 8 * DRAM_CHANNEL_WIDTH << "-bit Data Rate: " << DRAM_IO_FREQ << " MT/s" << std::endl;
+  // long long int dram_size = DRAM_CHANNELS * DRAM_RANKS * DRAM_BANKS * DRAM_ROWS * DRAM_COLUMNS * BLOCK_SIZE / 1024 / 1024; // in MiB
+  // std::cout << "Off-chip DRAM Size: ";
+  // if (dram_size > 1024)
+  //   std::cout << dram_size / 1024 << " GiB";
+  // else
+  //   std::cout << dram_size << " MiB";
+  // std::cout << " Channels: " << DRAM_CHANNELS << " Width: " << 8 * DRAM_CHANNEL_WIDTH << "-bit Data Rate: " << DRAM_IO_FREQ << " MT/s" << std::endl;
+
+  DRAM.channels[0].ch_latency=50;
+  DRAM.channels[1].ch_latency=100;
+  DRAM.channels[2].ch_latency=270;
+  DRAM.channels[3].ch_latency=170;
 
   std::cout << std::endl;
   std::cout << "VirtualMemory physical capacity: " << std::size(vmem.ppage_free_list) * vmem.page_size;
